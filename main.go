@@ -6,14 +6,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
-	"github.com/yuin/goldmark"
+	"github.com/tjons/kep-checker/pkg/goldenkep"
+	"github.com/tjons/kep-checker/pkg/sectionize"
 )
 
 var (
 	KepUrl, DefaultKepTemplateURL string
 )
 
+// should actually pull the kep directory from the users fork or from the PR -
+// this is much more powerful and helpful
 func init() {
 	flag.StringVar(&KepUrl, "kep-url", "", "required: URL to KEP to validate")
 	flag.StringVar(&DefaultKepTemplateURL, "kep-template-url", "https://raw.githubusercontent.com/kubernetes/enhancements/master/keps/NNNN-kep-template/README.md", "URL to KEP template")
@@ -57,5 +61,29 @@ func main() {
 		os.Exit(1)
 	}
 
-	goldmark.New().Parse(kep)
+	s := sectionize.NewSectionizer(kep).
+		WithStripComments(true).
+		WithTrimHeadings(true)
+
+	sections := s.Sectionize()
+
+	for i := range sections {
+		fmt.Printf("Section: %s\nWords: %d\n", sections[i].Title, len(strings.Split(sections[i].Body, " ")))
+	}
+
+	// we need to take the template and extract sections from it
+	// for our purposes, a section is a heading followed by a list of lines
+	templateSections := goldenkep.GetSections()
+	for _, templateSection := range templateSections {
+		exists := false
+		for _, section := range sections {
+			if templateSection.Title == section.Title {
+				exists = true
+			}
+		}
+
+		if !exists {
+			fmt.Printf("KEP is not using the latest template: section %s is missing", templateSection.Title)
+		}
+	}
 }
